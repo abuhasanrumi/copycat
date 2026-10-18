@@ -33,23 +33,78 @@ func render(_ px: Int) -> Data {
     NSGradient(colors: [NSColor.white.withAlphaComponent(0.22), .clear])!
         .draw(in: NSRect(x: rect.minX, y: rect.midY, width: rect.width, height: rect.height / 2), angle: -90)
 
-    // Glyph
-    let config = NSImage.SymbolConfiguration(pointSize: s * 0.48, weight: .semibold)
-    if let sym = NSImage(systemSymbolName: "doc.on.clipboard.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-        let tinted = NSImage(size: sym.size, flipped: false) { r in
-            sym.draw(in: r)
-            NSColor.white.set()
-            r.fill(using: .sourceAtop)
-            return true
+    // Two overlapping cat heads: the back one is the "copy".
+    let u = rect.width
+    let origin = rect.origin
+    func pt(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: origin.x + x * u, y: origin.y + y * u) }
+
+    func catHead(cx: CGFloat, cy: CGFloat) -> [NSBezierPath] {
+        let w: CGFloat = 0.54, h: CGFloat = 0.42
+        let head = NSBezierPath(roundedRect: NSRect(x: pt(cx - w / 2, cy - h / 2).x, y: pt(cx, cy - h / 2).y,
+                                                    width: w * u, height: h * u), xRadius: 0.2 * w * u, yRadius: 0.24 * h * u)
+        func ear(_ side: CGFloat) -> NSBezierPath {
+            let p = NSBezierPath()
+            p.move(to: pt(cx + side * 0.50 * w, cy + 0.05 * h))
+            p.line(to: pt(cx + side * 0.40 * w, cy + 0.5 * h + 0.30 * h))
+            p.line(to: pt(cx + side * 0.06 * w, cy + 0.5 * h - 0.02 * h))
+            p.close()
+            p.lineJoinStyle = .round
+            p.lineWidth = 0.035 * u
+            return p
         }
-        let g = tinted.size
-        let gs = NSShadow()
-        gs.shadowColor = NSColor.black.withAlphaComponent(0.25)
-        gs.shadowBlurRadius = s * 0.02
-        gs.shadowOffset = NSSize(width: 0, height: -s * 0.01)
-        gs.set()
-        tinted.draw(in: NSRect(x: s / 2 - g.width / 2, y: s / 2 - g.height / 2, width: g.width, height: g.height))
+        return [head, ear(-1), ear(1)]
     }
+
+    // Back copy (soft lavender, offset up and right).
+    NSColor(srgbRed: 0.80, green: 0.82, blue: 1.0, alpha: 1).set()
+    for p in catHead(cx: 0.55, cy: 0.52) { p.fill(); p.stroke() }
+
+    // Front cat (white) with the face cut out in the gradient's mid tone.
+    // Draw the whole head inside one transparency layer so the shadow falls on the silhouette, not on each piece.
+    let cg = NSGraphicsContext.current!.cgContext
+    cg.saveGState()
+    cg.setShadow(offset: CGSize(width: 0, height: -s * 0.015), blur: s * 0.03,
+                 color: NSColor.black.withAlphaComponent(0.28).cgColor)
+    cg.beginTransparencyLayer(auxiliaryInfo: nil)
+    NSColor.white.set()
+    let fcx: CGFloat = 0.46, fcy: CGFloat = 0.46
+    for p in catHead(cx: fcx, cy: fcy) { p.fill(); p.stroke() }
+    cg.endTransparencyLayer()
+    cg.restoreGState()
+
+    let ink = NSColor(srgbRed: 0.33, green: 0.33, blue: 0.86, alpha: 1)
+    ink.set()
+    for side in [-1.0, 1.0] as [CGFloat] {
+        let e = NSBezierPath(ovalIn: NSRect(x: pt(fcx + side * 0.115 - 0.036, 0).x, y: pt(0, fcy + 0.0).y,
+                                            width: 0.072 * u, height: 0.10 * u))
+        e.fill()
+    }
+    let nose = NSBezierPath()
+    nose.move(to: pt(fcx - 0.032, fcy - 0.03))
+    nose.line(to: pt(fcx + 0.032, fcy - 0.03))
+    nose.line(to: pt(fcx, fcy - 0.07))
+    nose.close()
+    nose.lineJoinStyle = .round
+    nose.lineWidth = 0.012 * u
+    nose.fill(); nose.stroke()
+    let mouth = NSBezierPath()
+    mouth.move(to: pt(fcx, fcy - 0.07))
+    mouth.curve(to: pt(fcx - 0.06, fcy - 0.105), controlPoint1: pt(fcx, fcy - 0.10), controlPoint2: pt(fcx - 0.03, fcy - 0.115))
+    mouth.move(to: pt(fcx, fcy - 0.07))
+    mouth.curve(to: pt(fcx + 0.06, fcy - 0.105), controlPoint1: pt(fcx, fcy - 0.10), controlPoint2: pt(fcx + 0.03, fcy - 0.115))
+    mouth.lineWidth = 0.014 * u
+    mouth.lineCapStyle = .round
+    mouth.stroke()
+    let whiskers = NSBezierPath()
+    for side in [-1.0, 1.0] as [CGFloat] {
+        for (dy, tilt) in [(0.012, 0.022), (-0.022, 0.0), (-0.056, -0.022)] as [(CGFloat, CGFloat)] {
+            whiskers.move(to: pt(fcx + side * 0.15, fcy - 0.05 + dy))
+            whiskers.line(to: pt(fcx + side * 0.245, fcy - 0.05 + dy + tilt))
+        }
+    }
+    whiskers.lineWidth = 0.011 * u
+    whiskers.lineCapStyle = .round
+    whiskers.stroke()
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
 }
